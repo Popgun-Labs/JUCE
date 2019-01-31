@@ -52,10 +52,11 @@ public:
     /** Implementation of the AudioSource method. */
     void getNextAudioBlock (const AudioSourceChannelInfo& bufferToFill) override;
 
+    int position = 0;
+
 private:
     //==============================================================================
     AudioBuffer<float> buffer;
-    int position = 0;
     bool isLooping;
 
     //==============================================================================

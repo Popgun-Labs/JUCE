@@ -73,13 +73,15 @@ public:
     void releaseResources() override;
     void getNextAudioBlock (const AudioSourceChannelInfo&) override;
 
+    int bufferPos;
+    double subSampleOffset;
+    OptionalScopedPointer<AudioSource> input;
+
 private:
     //==============================================================================
-    OptionalScopedPointer<AudioSource> input;
     double ratio, lastRatio;
     AudioBuffer<float> buffer;
-    int bufferPos, sampsInBuffer;
-    double subSampleOffset;
+    int sampsInBuffer;
     double coefficients[6];
     SpinLock ratioLock;
     const int numChannels;
