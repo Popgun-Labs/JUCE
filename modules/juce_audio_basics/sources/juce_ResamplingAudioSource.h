@@ -74,14 +74,16 @@ public:
     void getNextAudioBlock (const AudioSourceChannelInfo&) override;
 
     int bufferPos;
-    double subSampleOffset;
     OptionalScopedPointer<AudioSource> input;
 
 private:
     //==============================================================================
+
+
     double ratio, lastRatio;
     AudioBuffer<float> buffer;
     int sampsInBuffer;
+    double subSampleOffset;
     double coefficients[6];
     SpinLock ratioLock;
     const int numChannels;

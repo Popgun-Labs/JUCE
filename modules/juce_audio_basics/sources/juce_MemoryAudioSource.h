@@ -53,10 +53,10 @@ public:
     void getNextAudioBlock (const AudioSourceChannelInfo& bufferToFill) override;
 
     int position = 0;
+    AudioBuffer<float> buffer;
 
 private:
     //==============================================================================
-    AudioBuffer<float> buffer;
     bool isLooping;
 
     //==============================================================================
