@@ -1005,7 +1005,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
             AudioUnitSetProperty (audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, sizeof (format));
         }
 
-        if (AudioUnitInitialize (audioUnit) != noErr)
+        while (AudioUnitInitialize (audioUnit) != noErr)
             Thread::sleep(500);
 
         {
