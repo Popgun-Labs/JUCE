@@ -1005,7 +1005,8 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
             AudioUnitSetProperty (audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, sizeof (format));
         }
 
-        AudioUnitInitialize (audioUnit);
+        if (AudioUnitInitialize (audioUnit) != noErr)
+            Thread::sleep(500);
 
         {
             // Querying the kAudioUnitProperty_MaximumFramesPerSlice property after calling AudioUnitInitialize
