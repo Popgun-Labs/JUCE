@@ -27,6 +27,8 @@ class iOSAudioIODevice;
 
 static const char* const iOSAudioDeviceName = "iOS Audio";
 
+bool iOSAudioIODevice::m_engineStartFailed = false;
+
 //==============================================================================
 struct AudioSessionHolder
 {
@@ -1005,8 +1007,13 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
             AudioUnitSetProperty (audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, sizeof (format));
         }
 
-        while (AudioUnitInitialize (audioUnit) != noErr)
-            Thread::sleep(500);
+        if (AudioUnitInitialize(audioUnit) != noErr)
+        {
+            m_engineStartFailed = true;
+            AudioComponentInstanceDispose (audioUnit);
+            audioUnit = nullptr;
+            return false;
+        }
 
         {
             // Querying the kAudioUnitProperty_MaximumFramesPerSlice property after calling AudioUnitInitialize
