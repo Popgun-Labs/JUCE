@@ -2,17 +2,16 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
 
-   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
-   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
-   27th April 2017).
+   By using JUCE, you agree to the terms of both the JUCE 6 End-User License
+   Agreement and JUCE Privacy Policy (both effective as of the 16th June 2020).
 
-   End User License Agreement: www.juce.com/juce-5-licence
-   Privacy Policy: www.juce.com/juce-5-privacy-policy
+   End User License Agreement: www.juce.com/juce-6-licence
+   Privacy Policy: www.juce.com/juce-privacy-policy
 
    Or: You may also use this code under the terms of the GPL v3 (see
    www.gnu.org/licenses).
@@ -125,10 +124,10 @@ public:
 
         heapBlockToUseForAllocation.malloc (channelListBytes + extraBytes + channelSize * numberOfChannels);
 
-        auto* chanArray = reinterpret_cast<SampleType**> (heapBlockToUseForAllocation.getData());
+        auto* chanArray = unalignedPointerCast<SampleType**> (heapBlockToUseForAllocation.getData());
         channels = chanArray;
 
-        auto* data = reinterpret_cast<SampleType*> (addBytesToPointer (chanArray, channelListBytes));
+        auto* data = unalignedPointerCast<SampleType*> (addBytesToPointer (chanArray, channelListBytes));
         data = snapPointerToAlignment (data, alignmentInBytes);
 
         for (ChannelCountType i = 0; i < numChannels; ++i)
@@ -146,6 +145,19 @@ public:
     template <typename OtherSampleType>
     constexpr AudioBlock (AudioBuffer<OtherSampleType>& buffer) noexcept
         : channels (buffer.getArrayOfWritePointers()),
+          numChannels (static_cast<ChannelCountType> (buffer.getNumChannels())),
+          numSamples (static_cast<size_t> (buffer.getNumSamples()))
+    {
+    }
+
+    /** Creates an AudioBlock that points to the data in an AudioBuffer.
+        AudioBlock does not copy nor own the memory pointed to by dataToUse.
+        Therefore it is the user's responsibility to ensure that the buffer is retained
+        throughout the life-time of the AudioBlock without being modified.
+    */
+    template <typename OtherSampleType>
+    constexpr AudioBlock (const AudioBuffer<OtherSampleType>& buffer) noexcept
+        : channels (buffer.getArrayOfReadPointers()),
           numChannels (static_cast<ChannelCountType> (buffer.getNumChannels())),
           numSamples (static_cast<size_t> (buffer.getNumSamples()))
     {
@@ -234,7 +246,7 @@ public:
         return AudioBlock (channels + channel, 1, startSample, numSamples);
     }
 
-    /** Returns a subset of continguous channels
+    /** Returns a subset of contiguous channels
         @param channelStart       First channel of the subset
         @param numChannelsToUse   Count of channels in the subset
     */
@@ -288,8 +300,8 @@ public:
     const AudioBlock& clear() const noexcept   { clearInternal(); return *this; }
 
     /** Fills the memory referenced by this AudioBlock with value. */
-    AudioBlock&       JUCE_VECTOR_CALLTYPE fill (SampleType value)       noexcept   { fillInternal (value); return *this; }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE fill (SampleType value) const noexcept   { fillInternal (value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE fill (NumericType value)       noexcept   { fillInternal (value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE fill (NumericType value) const noexcept   { fillInternal (value); return *this; }
 
     /** Copies the values in src to this block. */
     template <typename OtherSampleType>
@@ -297,25 +309,25 @@ public:
     template <typename OtherSampleType>
     const AudioBlock& copyFrom (const AudioBlock<OtherSampleType>& src) const noexcept   { copyFromInternal (src); return *this; }
 
-    /** Copy the values from a JUCE's AudioBuffer to this block.
+    /** Copy the values from an AudioBuffer to this block.
 
-        All indices and sizes are in the receiver's units, i.e. if SampleType is a
+        All indices and sizes are in this AudioBlock's units, i.e. if SampleType is a
         SIMDRegister then incrementing srcPos by one will increase the sample position
         in the AudioBuffer's units by a factor of SIMDRegister<SampleType>::SIMDNumElements.
     */
-    template <typename OtherSampleType>
-    AudioBlock&       copyFrom (const AudioBuffer<OtherSampleType>& src,
+    template <typename OtherNumericType>
+    AudioBlock&       copyFrom (const AudioBuffer<OtherNumericType>& src,
                                 size_t srcPos = 0, size_t dstPos = 0,
                                 size_t numElements = std::numeric_limits<size_t>::max())         { copyFromInternal (src, srcPos, dstPos, numElements); return *this; }
-    template <typename OtherSampleType>
-    const AudioBlock& copyFrom (const AudioBuffer<OtherSampleType>& src,
+    template <typename OtherNumericType>
+    const AudioBlock& copyFrom (const AudioBuffer<OtherNumericType>& src,
                                 size_t srcPos = 0, size_t dstPos = 0,
                                 size_t numElements = std::numeric_limits<size_t>::max()) const   { copyFromInternal (src, srcPos, dstPos, numElements); return *this; }
 
 
     /** Copies the values from this block to an AudioBuffer.
 
-        All indices and sizes are in the receiver's units, i.e. if SampleType is a
+        All indices and sizes are in this AudioBlock's units, i.e. if SampleType is a
         SIMDRegister then incrementing dstPos by one will increase the sample position
         in the AudioBuffer's units by a factor of SIMDRegister<SampleType>::SIMDNumElements.
     */
@@ -329,7 +341,8 @@ public:
         for (size_t ch = 0; ch < maxChannels; ++ch)
             FloatVectorOperations::copy (dst.getWritePointer (static_cast<int> (ch),
                                                               static_cast<int> (dstPos * sizeFactor)),
-                                         getChannelPointer (ch) + srcPos, n);
+                                         getDataPointer (ch) + (srcPos * sizeFactor),
+                                         n);
     }
 
     /** Move memory within this block from the position srcPos to the position dstPos.
@@ -375,8 +388,8 @@ public:
 
     //==============================================================================
     /** Adds a fixed value to the elements in this block. */
-    AudioBlock&       JUCE_VECTOR_CALLTYPE add (SampleType value)       noexcept   { addInternal (value); return *this; }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE add (SampleType value) const noexcept   { addInternal (value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE add (NumericType value)       noexcept   { addInternal (value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE add (NumericType value) const noexcept   { addInternal (value); return *this; }
 
     /** Adds the elements in the src block to the elements in this block. */
     template <typename OtherSampleType>
@@ -386,9 +399,9 @@ public:
 
     /** Adds a fixed value to each source value and replaces the contents of this block. */
     template <typename OtherSampleType>
-    AudioBlock&       JUCE_VECTOR_CALLTYPE replaceWithSumOf (AudioBlock<OtherSampleType> src, SampleType value)      noexcept    { replaceWithSumOfInternal (src, value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE replaceWithSumOf (AudioBlock<OtherSampleType> src, NumericType value)      noexcept    { replaceWithSumOfInternal (src, value); return *this; }
     template <typename OtherSampleType>
-    const AudioBlock& JUCE_VECTOR_CALLTYPE replaceWithSumOf (AudioBlock<OtherSampleType> src, SampleType value) const noexcept   { replaceWithSumOfInternal (src, value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE replaceWithSumOf (AudioBlock<OtherSampleType> src, NumericType value) const noexcept   { replaceWithSumOfInternal (src, value); return *this; }
 
     /** Adds each source1 value to the corresponding source2 value and replaces the contents of this block. */
     template <typename Src1SampleType, typename Src2SampleType>
@@ -398,8 +411,8 @@ public:
 
     //==============================================================================
     /** Subtracts a fixed value from the elements in this block. */
-    AudioBlock&       JUCE_VECTOR_CALLTYPE subtract (SampleType value)       noexcept   { subtractInternal (value); return *this; }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE subtract (SampleType value) const noexcept   { subtractInternal (value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE subtract (NumericType value)       noexcept   { subtractInternal (value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE subtract (NumericType value) const noexcept   { subtractInternal (value); return *this; }
 
     /** Subtracts the source values from the elements in this block. */
     template <typename OtherSampleType>
@@ -409,9 +422,9 @@ public:
 
     /** Subtracts a fixed value from each source value and replaces the contents of this block. */
     template <typename OtherSampleType>
-    AudioBlock&       JUCE_VECTOR_CALLTYPE replaceWithDifferenceOf (AudioBlock<OtherSampleType> src, SampleType value)       noexcept   { replaceWithDifferenceOfInternal (src, value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE replaceWithDifferenceOf (AudioBlock<OtherSampleType> src, NumericType value)       noexcept   { replaceWithDifferenceOfInternal (src, value); return *this; }
     template <typename OtherSampleType>
-    const AudioBlock& JUCE_VECTOR_CALLTYPE replaceWithDifferenceOf (AudioBlock<OtherSampleType> src, SampleType value) const noexcept   { replaceWithDifferenceOfInternal (src, value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE replaceWithDifferenceOf (AudioBlock<OtherSampleType> src, NumericType value) const noexcept   { replaceWithDifferenceOfInternal (src, value); return *this; }
 
     /** Subtracts each source2 value from the corresponding source1 value and replaces the contents of this block. */
     template <typename Src1SampleType, typename Src2SampleType>
@@ -421,8 +434,8 @@ public:
 
     //==============================================================================
     /** Multiplies the elements in this block by a fixed value. */
-    AudioBlock&       JUCE_VECTOR_CALLTYPE multiplyBy (SampleType value)       noexcept   { multiplyByInternal (value); return *this; }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE multiplyBy (SampleType value) const noexcept   { multiplyByInternal (value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE multiplyBy (NumericType value)       noexcept   { multiplyByInternal (value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE multiplyBy (NumericType value) const noexcept   { multiplyByInternal (value); return *this; }
 
     /** Multiplies the elements in this block by the elements in the src block */
     template <typename OtherSampleType>
@@ -432,9 +445,9 @@ public:
 
     /** Replaces the elements in this block with the product of the elements in the source src block and a fixed value. */
     template <typename OtherSampleType>
-    AudioBlock&       JUCE_VECTOR_CALLTYPE replaceWithProductOf (AudioBlock<OtherSampleType> src, SampleType value)       noexcept   { replaceWithProductOfInternal (src, value); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE replaceWithProductOf (AudioBlock<OtherSampleType> src, NumericType value)       noexcept   { replaceWithProductOfInternal (src, value); return *this; }
     template <typename OtherSampleType>
-    const AudioBlock& JUCE_VECTOR_CALLTYPE replaceWithProductOf (AudioBlock<OtherSampleType> src, SampleType value) const noexcept   { replaceWithProductOfInternal (src, value); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE replaceWithProductOf (AudioBlock<OtherSampleType> src, NumericType value) const noexcept   { replaceWithProductOfInternal (src, value); return *this; }
 
     /** Replaces the elements in this block with the product of the elements in the src1 and scr2 blocks. */
     template <typename Src1SampleType, typename Src2SampleType>
@@ -458,9 +471,9 @@ public:
     //==============================================================================
     /** Multiplies each value in src by a fixed value and adds the result to this block. */
     template <typename OtherSampleType>
-    AudioBlock&       JUCE_VECTOR_CALLTYPE addProductOf (AudioBlock<OtherSampleType> src, SampleType factor)       noexcept   { addProductOfInternal (src, factor); return *this; }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE addProductOf (AudioBlock<OtherSampleType> src, NumericType factor)       noexcept   { addProductOfInternal (src, factor); return *this; }
     template <typename OtherSampleType>
-    const AudioBlock& JUCE_VECTOR_CALLTYPE addProductOf (AudioBlock<OtherSampleType> src, SampleType factor) const noexcept   { addProductOfInternal (src, factor); return *this; }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE addProductOf (AudioBlock<OtherSampleType> src, NumericType factor) const noexcept   { addProductOfInternal (src, factor); return *this; }
 
     /** Multiplies each value in srcA with the corresponding value in srcB and adds the result to this block. */
     template <typename Src1SampleType, typename Src2SampleType>
@@ -506,30 +519,30 @@ public:
             return {};
 
         auto n = static_cast<int> (numSamples * sizeFactor);
-        auto minmax = FloatVectorOperations::findMinAndMax (getChannelPointer (0), n);
+        auto minmax = FloatVectorOperations::findMinAndMax (getDataPointer (0), n);
 
         for (size_t ch = 1; ch < numChannels; ++ch)
-            minmax = minmax.getUnionWith (FloatVectorOperations::findMinAndMax (getChannelPointer (ch), n));
+            minmax = minmax.getUnionWith (FloatVectorOperations::findMinAndMax (getDataPointer (ch), n));
 
         return minmax;
     }
 
     //==============================================================================
     // Convenient operator wrappers.
-    AudioBlock&       JUCE_VECTOR_CALLTYPE operator+= (SampleType value)       noexcept   { return add (value); }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE operator+= (SampleType value) const noexcept   { return add (value); }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE operator+= (NumericType value)       noexcept   { return add (value); }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE operator+= (NumericType value) const noexcept   { return add (value); }
 
     AudioBlock&                            operator+= (AudioBlock src)         noexcept   { return add (src); }
     const AudioBlock&                      operator+= (AudioBlock src)   const noexcept   { return add (src); }
 
-    AudioBlock&       JUCE_VECTOR_CALLTYPE operator-= (SampleType value)       noexcept   { return subtract (value); }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE operator-= (SampleType value) const noexcept   { return subtract (value); }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE operator-= (NumericType value)       noexcept   { return subtract (value); }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE operator-= (NumericType value) const noexcept   { return subtract (value); }
 
     AudioBlock&                            operator-= (AudioBlock src)         noexcept   { return subtract (src); }
     const AudioBlock&                      operator-= (AudioBlock src)   const noexcept   { return subtract (src); }
 
-    AudioBlock&       JUCE_VECTOR_CALLTYPE operator*= (SampleType value)       noexcept   { return multiplyBy (value); }
-    const AudioBlock& JUCE_VECTOR_CALLTYPE operator*= (SampleType value) const noexcept   { return multiplyBy (value); }
+    AudioBlock&       JUCE_VECTOR_CALLTYPE operator*= (NumericType value)       noexcept   { return multiplyBy (value); }
+    const AudioBlock& JUCE_VECTOR_CALLTYPE operator*= (NumericType value) const noexcept   { return multiplyBy (value); }
 
     AudioBlock&                            operator*= (AudioBlock src)         noexcept   { return multiplyBy (src); }
     const AudioBlock&                      operator*= (AudioBlock src)   const noexcept   { return multiplyBy (src); }
@@ -574,42 +587,48 @@ public:
     }
 
 private:
+    NumericType* getDataPointer (size_t channel) const noexcept
+    {
+        return reinterpret_cast<NumericType*> (getChannelPointer (channel));
+    }
+
     //==============================================================================
     void JUCE_VECTOR_CALLTYPE clearInternal() const noexcept
     {
         auto n = static_cast<int> (numSamples * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::clear (getChannelPointer (ch), n);
+            FloatVectorOperations::clear (getDataPointer (ch), n);
     }
 
-    void JUCE_VECTOR_CALLTYPE fillInternal (SampleType value) const noexcept
+    void JUCE_VECTOR_CALLTYPE fillInternal (NumericType value) const noexcept
     {
         auto n = static_cast<int> (numSamples * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::fill (getChannelPointer (ch), value, n);
+            FloatVectorOperations::fill (getDataPointer (ch), value, n);
     }
 
     template <typename OtherSampleType>
     void copyFromInternal (const AudioBlock<OtherSampleType>& src) const noexcept
     {
         auto maxChannels = jmin (src.numChannels, numChannels);
-        auto n = static_cast<int> (jmin (src.numSamples, numSamples) * sizeFactor);
+        auto n = static_cast<int> (jmin (src.numSamples * src.sizeFactor,
+                                         numSamples * sizeFactor));
 
         for (size_t ch = 0; ch < maxChannels; ++ch)
-            FloatVectorOperations::copy (getChannelPointer (ch), src.getChannelPointer (ch), n);
+            FloatVectorOperations::copy (getDataPointer (ch), src.getDataPointer (ch), n);
     }
 
-    template <typename OtherSampleType>
-    void copyFromInternal (const AudioBuffer<OtherSampleType>& src, size_t srcPos, size_t dstPos, size_t numElements) const
+    template <typename OtherNumericType>
+    void copyFromInternal (const AudioBuffer<OtherNumericType>& src, size_t srcPos, size_t dstPos, size_t numElements) const
     {
         auto srclen = static_cast<size_t> (src.getNumSamples()) / sizeFactor;
         auto n = static_cast<int> (jmin (srclen - srcPos, numSamples - dstPos, numElements) * sizeFactor);
         auto maxChannels = jmin (static_cast<size_t> (src.getNumChannels()), static_cast<size_t> (numChannels));
 
         for (size_t ch = 0; ch < maxChannels; ++ch)
-            FloatVectorOperations::copy (getChannelPointer (ch) + dstPos,
+            FloatVectorOperations::copy (getDataPointer (ch) + (dstPos * sizeFactor),
                                          src.getReadPointer (static_cast<int> (ch),
                                                              static_cast<int> (srcPos * sizeFactor)),
                                          n);
@@ -628,12 +647,12 @@ private:
     }
 
     //==============================================================================
-    void JUCE_VECTOR_CALLTYPE addInternal (SampleType value) const noexcept
+    void JUCE_VECTOR_CALLTYPE addInternal (NumericType value) const noexcept
     {
         auto n = static_cast<int> (numSamples * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::add (getChannelPointer (ch), value, n);
+            FloatVectorOperations::add (getDataPointer (ch), value, n);
     }
 
     template <typename OtherSampleType>
@@ -643,17 +662,17 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::add (getChannelPointer (ch), src.getChannelPointer (ch), n);
+            FloatVectorOperations::add (getDataPointer (ch), src.getDataPointer (ch), n);
     }
 
     template <typename OtherSampleType>
-    void JUCE_VECTOR_CALLTYPE replaceWithSumOfInternal (AudioBlock<OtherSampleType> src, SampleType value) const noexcept
+    void JUCE_VECTOR_CALLTYPE replaceWithSumOfInternal (AudioBlock<OtherSampleType> src, NumericType value) const noexcept
     {
         jassert (numChannels == src.numChannels);
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::add (getChannelPointer (ch), src.getChannelPointer (ch), value, n);
+            FloatVectorOperations::add (getDataPointer (ch), src.getDataPointer (ch), value, n);
     }
 
     template <typename Src1SampleType, typename Src2SampleType>
@@ -663,13 +682,13 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src1.numSamples, src2.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::add (getChannelPointer (ch), src1.getChannelPointer (ch), src2.getChannelPointer (ch), n);
+            FloatVectorOperations::add (getDataPointer (ch), src1.getDataPointer (ch), src2.getDataPointer (ch), n);
     }
 
     //==============================================================================
-    constexpr void JUCE_VECTOR_CALLTYPE subtractInternal (SampleType value) const noexcept
+    constexpr void JUCE_VECTOR_CALLTYPE subtractInternal (NumericType value) const noexcept
     {
-        addInternal (value * static_cast<SampleType> (-1.0));
+        addInternal (value * static_cast<NumericType> (-1.0));
     }
 
     template <typename OtherSampleType>
@@ -679,13 +698,13 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::subtract (getChannelPointer (ch), src.getChannelPointer (ch), n);
+            FloatVectorOperations::subtract (getDataPointer (ch), src.getDataPointer (ch), n);
     }
 
     template <typename OtherSampleType>
-    void JUCE_VECTOR_CALLTYPE replaceWithDifferenceOfInternal (AudioBlock<OtherSampleType> src, SampleType value) const noexcept
+    void JUCE_VECTOR_CALLTYPE replaceWithDifferenceOfInternal (AudioBlock<OtherSampleType> src, NumericType value) const noexcept
     {
-        replaceWithSumOfInternal (src, static_cast<SampleType> (-1.0) * value);
+        replaceWithSumOfInternal (src, static_cast<NumericType> (-1.0) * value);
     }
 
     template <typename Src1SampleType, typename Src2SampleType>
@@ -695,16 +714,16 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src1.numSamples, src2.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::subtract (getChannelPointer (ch), src1.getChannelPointer (ch), src2.getChannelPointer (ch), n);
+            FloatVectorOperations::subtract (getDataPointer (ch), src1.getDataPointer (ch), src2.getDataPointer (ch), n);
     }
 
     //==============================================================================
-    void JUCE_VECTOR_CALLTYPE multiplyByInternal (SampleType value) const noexcept
+    void JUCE_VECTOR_CALLTYPE multiplyByInternal (NumericType value) const noexcept
     {
         auto n = static_cast<int> (numSamples * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::multiply (getChannelPointer (ch), value, n);
+            FloatVectorOperations::multiply (getDataPointer (ch), value, n);
     }
 
     template <typename OtherSampleType>
@@ -714,17 +733,17 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::multiply (getChannelPointer (ch), src.getChannelPointer (ch), n);
+            FloatVectorOperations::multiply (getDataPointer (ch), src.getDataPointer (ch), n);
     }
 
     template <typename OtherSampleType>
-    void JUCE_VECTOR_CALLTYPE replaceWithProductOfInternal (AudioBlock<OtherSampleType> src, SampleType value) const noexcept
+    void JUCE_VECTOR_CALLTYPE replaceWithProductOfInternal (AudioBlock<OtherSampleType> src, NumericType value) const noexcept
     {
         jassert (numChannels == src.numChannels);
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::multiply (getChannelPointer (ch), src.getChannelPointer (ch), value, n);
+            FloatVectorOperations::multiply (getDataPointer (ch), src.getDataPointer (ch), value, n);
     }
 
     template <typename Src1SampleType, typename Src2SampleType>
@@ -734,7 +753,7 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src1.numSamples, src2.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::multiply (getChannelPointer (ch), src1.getChannelPointer (ch), src2.getChannelPointer (ch), n);
+            FloatVectorOperations::multiply (getDataPointer (ch), src1.getDataPointer (ch), src2.getDataPointer (ch), n);
     }
 
     template <typename SmoothingType>
@@ -751,7 +770,7 @@ private:
                 const auto scaler = value.getNextValue();
 
                 for (size_t ch = 0; ch < numChannels; ++ch)
-                    getChannelPointer (ch)[i] *= scaler;
+                    getDataPointer (ch)[i] *= scaler;
             }
         }
     }
@@ -774,20 +793,20 @@ private:
                 const auto scaler = value.getNextValue();
 
                 for (size_t ch = 0; ch < numChannels; ++ch)
-                    getChannelPointer (ch)[i] = scaler * src.getChannelPointer (ch)[i];
+                    getDataPointer (ch)[i] = scaler * src.getChannelPointer (ch)[i];
             }
         }
     }
 
     //==============================================================================
     template <typename OtherSampleType>
-    void JUCE_VECTOR_CALLTYPE addProductOfInternal (AudioBlock<OtherSampleType> src, SampleType factor) const noexcept
+    void JUCE_VECTOR_CALLTYPE addProductOfInternal (AudioBlock<OtherSampleType> src, NumericType factor) const noexcept
     {
         jassert (numChannels == src.numChannels);
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::addWithMultiply (getChannelPointer (ch), src.getChannelPointer (ch), factor, n);
+            FloatVectorOperations::addWithMultiply (getDataPointer (ch), src.getDataPointer (ch), factor, n);
     }
 
     template <typename Src1SampleType, typename Src2SampleType>
@@ -797,13 +816,13 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src1.numSamples, src2.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::addWithMultiply (getChannelPointer (ch), src1.getChannelPointer (ch), src2.getChannelPointer (ch), n);
+            FloatVectorOperations::addWithMultiply (getDataPointer (ch), src1.getDataPointer (ch), src2.getDataPointer (ch), n);
     }
 
     //==============================================================================
     constexpr void negateInternal() const noexcept
     {
-        multiplyByInternal (static_cast<SampleType> (-1.0));
+        multiplyByInternal (static_cast<NumericType> (-1.0));
     }
 
     template <typename OtherSampleType>
@@ -813,7 +832,7 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::negate (getChannelPointer (ch), src.getChannelPointer (ch), n);
+            FloatVectorOperations::negate (getDataPointer (ch), src.getDataPointer (ch), n);
     }
 
     template <typename OtherSampleType>
@@ -823,7 +842,7 @@ private:
         auto n = static_cast<int> (jmin (numSamples, src.numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::abs (getChannelPointer (ch), src.getChannelPointer (ch), n);
+            FloatVectorOperations::abs (getDataPointer (ch), src.getDataPointer (ch), n);
     }
 
     //==============================================================================
@@ -834,7 +853,7 @@ private:
         auto n = static_cast<int> (jmin (src1.numSamples, src2.numSamples, numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::min (getChannelPointer (ch), src1.getChannelPointer (ch), src2.getChannelPointer (ch), n);
+            FloatVectorOperations::min (getDataPointer (ch), src1.getDataPointer (ch), src2.getDataPointer (ch), n);
     }
 
     template <typename Src1SampleType, typename Src2SampleType>
@@ -844,7 +863,7 @@ private:
         auto n = static_cast<int> (jmin (src1.numSamples, src2.numSamples, numSamples) * sizeFactor);
 
         for (size_t ch = 0; ch < numChannels; ++ch)
-            FloatVectorOperations::max (getChannelPointer (ch), src1.getChannelPointer (ch), src2.getChannelPointer (ch), n);
+            FloatVectorOperations::max (getDataPointer (ch), src1.getDataPointer (ch), src2.getDataPointer (ch), n);
     }
 
     //==============================================================================

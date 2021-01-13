@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
@@ -185,7 +185,7 @@ struct BlockSerialNumber : public BlockStringData<16>
             if (c == 0)
                 return false;
 
-        return isAnyControlBlock() || isPadBlock() || isSeaboardBlock();
+        return isAnyControlBlock() || isPadBlock() || isSeaboardBlock() || isLumiKeysBlock();
     }
 
     bool isPadBlock() const noexcept            { return hasPrefix ("LPB") || hasPrefix ("LPM"); }
@@ -194,6 +194,7 @@ struct BlockSerialNumber : public BlockStringData<16>
     bool isDevCtrlBlock() const noexcept        { return hasPrefix ("DCB"); }
     bool isTouchBlock() const noexcept          { return hasPrefix ("TCB"); }
     bool isSeaboardBlock() const noexcept       { return hasPrefix ("SBB"); }
+    bool isLumiKeysBlock() const noexcept       { return hasPrefix ("LKB"); }
 
     bool isAnyControlBlock() const noexcept     { return isLiveBlock() || isLoopBlock() || isDevCtrlBlock() || isTouchBlock(); }
 
@@ -311,6 +312,9 @@ enum ConfigItemId
     zTrackingMode       = 32,
     // Graphics
     gammaCorrection     = 33,
+    globalKeyColour     = 34,
+    rootKeyColour       = 35,
+    brightness          = 36,
     // User
     user0               = 64,
     user1               = 65,
@@ -593,6 +597,14 @@ static constexpr const char* ledProgramLittleFootFunctions[] =
     "setButtonMinMaxDefault/viiii",
     "setButtonColours/viii",
     "setButtonTriState/vii",
+    "padControllerInitDefault/vb",
+    "padControllerReset/v",
+    "padControllerRegenDefault/v",
+    "padControllerRepaint/v",
+    "padControllerDrawPad/vi",
+    "setUseDefaultKeyHandler/vb",
+    "setUseDefaultKeyHandler/vbb",
+
     nullptr
 };
 

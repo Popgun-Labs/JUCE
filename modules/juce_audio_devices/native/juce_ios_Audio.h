@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
@@ -74,13 +74,6 @@ public:
     Image getIcon (int size);
    #endif
     void switchApplication();
-    
-    static bool DidEngineStartFail()
-    {
-        auto ret = m_engineStartFailed;
-        m_engineStartFailed = false;
-        return ret;
-    }
 
 private:
     //==============================================================================
@@ -93,8 +86,6 @@ private:
     struct Pimpl;
     friend struct Pimpl;
     std::unique_ptr<Pimpl> pimpl;
-    
-    static bool m_engineStartFailed;
 
     JUCE_DECLARE_NON_COPYABLE (iOSAudioIODevice)
 };

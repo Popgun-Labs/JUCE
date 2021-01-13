@@ -2,17 +2,16 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
 
-   By using JUCE, you agree to the terms of both the JUCE 5 End-User License
-   Agreement and JUCE 5 Privacy Policy (both updated and effective as of the
-   27th April 2017).
+   By using JUCE, you agree to the terms of both the JUCE 6 End-User License
+   Agreement and JUCE Privacy Policy (both effective as of the 16th June 2020).
 
-   End User License Agreement: www.juce.com/juce-5-licence
-   Privacy Policy: www.juce.com/juce-5-privacy-policy
+   End User License Agreement: www.juce.com/juce-6-licence
+   Privacy Policy: www.juce.com/juce-privacy-policy
 
    Or: You may also use this code under the terms of the GPL v3 (see
    www.gnu.org/licenses).
@@ -24,7 +23,7 @@
   ==============================================================================
 */
 
-#include "../JuceLibraryCode/JuceHeader.h"
+#include <JuceHeader.h>
 #include "../UI/MainHostWindow.h"
 #include "PluginGraph.h"
 #include "InternalPlugins.h"
@@ -152,7 +151,7 @@ PluginWindow* PluginGraph::getOrCreateWindowFor (AudioProcessorGraph::Node* node
         {
             auto description = plugin->getPluginDescription();
 
-            if (description.pluginFormatName == "Internal")
+            if (! plugin->hasEditor() && description.pluginFormatName == "Internal")
             {
                 getCommandManager().invokeDirectly (CommandIDs::showAudioSettings, false);
                 return nullptr;
@@ -199,14 +198,18 @@ void PluginGraph::newDocument()
 
     InternalPluginFormat internalFormat;
 
-    addPlugin (internalFormat.audioInDesc,  { 0.5,  0.1 });
-    addPlugin (internalFormat.midiInDesc,   { 0.25, 0.1 });
-    addPlugin (internalFormat.audioOutDesc, { 0.5,  0.9 });
+    jassert (internalFormat.getAllTypes().size() > 3);
 
-    MessageManager::callAsync ([this] () {
+    addPlugin (internalFormat.getAllTypes()[0], { 0.5,  0.1 });
+    addPlugin (internalFormat.getAllTypes()[1], { 0.25, 0.1 });
+    addPlugin (internalFormat.getAllTypes()[2], { 0.5,  0.9 });
+    addPlugin (internalFormat.getAllTypes()[3], { 0.25, 0.9 });
+
+    MessageManager::callAsync ([this]
+    {
         setChangedFlag (false);
         graph.addChangeListener (this);
-    } );
+    });
 }
 
 Result PluginGraph::loadDocument (const File& file)
