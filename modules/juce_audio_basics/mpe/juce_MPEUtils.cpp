@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
@@ -49,7 +49,7 @@ MPEChannelAssigner::MPEChannelAssigner (Range<int> channelRange)
 
 int MPEChannelAssigner::findMidiChannelForNewNote (int noteNumber) noexcept
 {
-    if (numChannels == 1)
+    if (numChannels <= 1)
         return firstChannel;
 
     for (auto ch = firstChannel; (isLegacy || zone->isLowerZone() ? ch <= lastChannel : ch >= lastChannel); ch += channelIncrement)

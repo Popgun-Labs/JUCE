@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
@@ -290,13 +290,10 @@ struct Detector   : public ReferenceCountedObject,
 
     void notifyBlockOfConfigChange (BlockImpl& bi, uint32 item)
     {
-        if (auto configChangedCallback = bi.configChangedCallback)
-        {
-            if (item >= bi.getMaxConfigIndex())
-                configChangedCallback (bi, {}, item);
-            else
-                configChangedCallback (bi, bi.getLocalConfigMetaData (item), item);
-        }
+        if (item >= bi.getMaxConfigIndex())
+            bi.handleConfigItemChanged ({ item }, item);
+        else
+            bi.handleConfigItemChanged (bi.getLocalConfigMetaData (item), item);
     }
 
     void handleConfigSetMessage (Block::UID deviceID, int32 item, int32 value)
@@ -311,7 +308,7 @@ struct Detector   : public ReferenceCountedObject,
     void handleConfigFactorySyncEndMessage (Block::UID deviceID)
     {
         if (auto* bi = getBlockImplementationWithUID (deviceID))
-            notifyBlockOfConfigChange (*bi, bi->getMaxConfigIndex());
+            bi->handleConfigSyncEnded();
     }
 
     void handleConfigFactorySyncResetMessage (Block::UID deviceID)
@@ -353,10 +350,10 @@ struct Detector   : public ReferenceCountedObject,
             {
                 TouchSurface::Touch scaledEvent (touchEvent);
 
-                scaledEvent.x      *= block->getWidth();
-                scaledEvent.y      *= block->getHeight();
-                scaledEvent.startX *= block->getWidth();
-                scaledEvent.startY *= block->getHeight();
+                scaledEvent.x      *= (float) block->getWidth();
+                scaledEvent.y      *= (float) block->getHeight();
+                scaledEvent.startX *= (float) block->getWidth();
+                scaledEvent.startY *= (float) block->getHeight();
 
                 surface->broadcastTouchChange (scaledEvent);
             }
@@ -537,6 +534,24 @@ private:
                     return 1;
                 }
             }
+            else if (block->getType() == Block::lumiKeysBlock)
+            {
+                if (edge == Block::ConnectionPort::DeviceEdge::north)
+                {
+                    switch (index)
+                    {
+                        case 0 : return 0;
+                        case 1 : return 2;
+                        case 2 : return 3;
+                        case 3 : return 5;
+                        default : jassertfalse;
+                    }
+                }
+                else if (edge == Block::ConnectionPort::DeviceEdge::south)
+                {
+                    jassertfalse;
+                }
+            }
 
             if (edge == Block::ConnectionPort::DeviceEdge::south)
                 return block->getWidth() - (index + 1);
@@ -556,6 +571,7 @@ private:
                 case Block::ConnectionPort::DeviceEdge::east:   return 1;
                 case Block::ConnectionPort::DeviceEdge::south:  return 2;
                 case Block::ConnectionPort::DeviceEdge::west:   return 3;
+                default: break;
             }
 
             jassertfalse;
@@ -614,6 +630,8 @@ private:
                             case 3: // left of me
                                 delta = { -theirBounds.width, (myBounds.height - (myOffset + 1)) - theirOffset };
                                 break;
+                            default:
+                                break;
                         }
 
                         {
@@ -656,6 +674,7 @@ private:
             case Block::ConnectionPort::DeviceEdge::south: return "south";
             case Block::ConnectionPort::DeviceEdge::east:  return "east";
             case Block::ConnectionPort::DeviceEdge::west:  return "west";
+            default: break;
         }
 
         return {};

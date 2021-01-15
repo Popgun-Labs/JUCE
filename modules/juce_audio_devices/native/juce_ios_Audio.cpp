@@ -2,7 +2,7 @@
   ==============================================================================
 
    This file is part of the JUCE library.
-   Copyright (c) 2017 - ROLI Ltd.
+   Copyright (c) 2020 - Raw Material Software Limited
 
    JUCE is an open source library subject to commercial or open-source
    licensing.
@@ -26,8 +26,6 @@ namespace juce
 class iOSAudioIODevice;
 
 static const char* const iOSAudioDeviceName = "iOS Audio";
-
-bool iOSAudioIODevice::m_engineStartFailed = false;
 
 //==============================================================================
 struct AudioSessionHolder
@@ -673,6 +671,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
 
     //==============================================================================
    #if JUCE_MODULE_AVAILABLE_juce_graphics
+    JUCE_BEGIN_IGNORE_WARNINGS_GCC_LIKE ("-Wdeprecated-declarations")
     Image getIcon (int size)
     {
         if (interAppAudioConnected)
@@ -683,6 +682,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
         }
         return Image();
     }
+    JUCE_END_IGNORE_WARNINGS_GCC_LIKE
    #endif
 
     void switchApplication()
@@ -1007,13 +1007,7 @@ struct iOSAudioIODevice::Pimpl      : public AudioPlayHead,
             AudioUnitSetProperty (audioUnit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Output, 1, &format, sizeof (format));
         }
 
-        if (AudioUnitInitialize(audioUnit) != noErr)
-        {
-            m_engineStartFailed = true;
-            AudioComponentInstanceDispose (audioUnit);
-            audioUnit = nullptr;
-            return false;
-        }
+        AudioUnitInitialize (audioUnit);
 
         {
             // Querying the kAudioUnitProperty_MaximumFramesPerSlice property after calling AudioUnitInitialize
@@ -1435,12 +1429,6 @@ void iOSAudioIODeviceType::handleRouteChange (AVAudioSessionRouteChangeReason)
 void iOSAudioIODeviceType::handleAsyncUpdate()
 {
     callDeviceChangeListeners();
-}
-
-//==============================================================================
-AudioIODeviceType* AudioIODeviceType::createAudioIODeviceType_iOSAudio()
-{
-    return new iOSAudioIODeviceType();
 }
 
 //==============================================================================
